@@ -1,0 +1,569 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>密码算法生成器</title>
+<script src="./pinyin.js"></script>
+<style>
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  body {
+    margin: 0; min-height: 100vh; font-family: system-ui, "Microsoft YaHei", sans-serif;
+    background: #1e1e2e; color: #e4e4e7; display: flex; justify-content: center;
+    align-items: flex-start; padding: 24px 16px;
+  }
+  .wrap { width: 100%; max-width: 560px; }
+  .card {
+    background: #27273a; border-radius: 14px; padding: 26px;
+    box-shadow: 0 8px 30px rgba(0,0,0,.4);
+  }
+  h2 { margin: 0 0 22px; font-size: 19px; font-weight: 600; }
+  h3 { margin: 0; font-size: 16px; font-weight: 600; color: #c9c9d4; }
+  label { display: block; font-size: 13px; color: #a1a1aa; margin: 16px 0 6px; }
+  input, textarea, button {
+    width: 100%; font-family: inherit; font-size: 15px; border-radius: 8px;
+    border: 1px solid #3f3f52; background: #1e1e2e; color: #e4e4e7;
+    padding: 11px 13px; outline: none;
+  }
+  input:focus, textarea:focus { border-color: #7c8cff; }
+  button {
+    margin-top: 18px; background: #7c8cff; color: #fff; border: none;
+    font-weight: 600; cursor: pointer; transition: .18s;
+  }
+  button:hover { background: #6a7bf5; }
+  button:active { transform: scale(.99); }
+  .out {
+    margin-top: 18px; padding: 14px; border-radius: 8px; background: #16161f;
+    border: 1px dashed #3f3f52; word-break: break-all;
+    font-family: Consolas, monospace; font-size: 17px;
+    color: #7cf5a0; min-height: 50px; line-height: 1.5;
+  }
+  .mid {
+    margin-top: 10px; padding: 10px 12px; border-radius: 8px;
+    background: #1a1a26; border: 1px solid #2f2f42; word-break: break-all;
+    font-family: Consolas, monospace; font-size: 13px; color: #9d9dbb;
+    line-height: 1.7;
+  }
+  .mid b { color: #c9a0ff; font-weight: 600; }
+  .placeholder { color: #52525b; font-size: 14px; }
+  .hint { font-size: 12px; color: #71717a; margin-top: 8px; line-height: 1.6; }
+  .err { color: #ff7b7b; font-size: 14px; margin-top: 14px; }
+  .hidden { display: none !important; }
+
+  #lockPage { text-align: center; }
+  #lockPage input { text-align: center; letter-spacing: 3px; font-size: 18px; }
+
+  .menu-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-top: 8px; }
+  .menu-btn {
+    margin: 0; padding: 26px 10px; border-radius: 12px; font-size: 16px;
+    background: #30304a; border: 1px solid #3f3f52; color: #e4e4e7;
+    font-weight: 600; letter-spacing: .5px;
+  }
+  .menu-btn:hover { background: #3a3a58; border-color: #7c8cff; }
+
+  .topbar {
+    display: flex; align-items: center; margin-bottom: 18px;
+    padding-bottom: 14px; border-bottom: 1px solid #3a3a4c;
+  }
+  .back {
+    width: auto; margin: 0; padding: 6px 14px; font-size: 13px;
+    background: #3f3f52; font-weight: 500;
+  }
+  .back:hover { background: #4c4c63; }
+  .topbar h3 { flex: 1; text-align: right; }
+
+  .map-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px; margin-top: 6px; }
+  .map-row { display: flex; align-items: center; gap: 6px; }
+  .map-row span { width: 20px; text-align: center; font-family: monospace; font-size: 15px; color: #a1a1aa; }
+  .map-row input { padding: 6px 8px; font-size: 14px; text-align: center; }
+  .toolbar { display: flex; gap: 8px; margin-top: 16px; flex-wrap: wrap; }
+  .btn-mini {
+    width: auto; margin: 0; padding: 8px 14px; font-size: 13px; font-weight: 500;
+    background: #3f3f52;
+  }
+  .btn-mini:hover { background: #4c4c63; }
+  .btn-mini.primary { background: #7c8cff; }
+  .btn-mini.primary:hover { background: #6a7bf5; }
+  .toast {
+    position: fixed; left: 50%; bottom: 34px; transform: translateX(-50%);
+    background: #7c8cff; color: #fff; padding: 9px 20px; border-radius: 20px;
+    font-size: 14px; opacity: 0; transition: .25s; pointer-events: none; z-index: 99;
+  }
+  .toast.show { opacity: 1; }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <!-- 页面1：解锁 -->
+  <div class="card" id="lockPage">
+    <h2>请输入密码</h2>
+    <input type="password" id="unlockPwd" autocomplete="off" inputmode="numeric">
+    <button id="unlockBtn">进入</button>
+    <div class="err hidden" id="lockErr">密码错误</div>
+  </div>
+
+  <!-- 页面2：算法选择 -->
+  <div class="card hidden" id="menuPage">
+    <h2>选择密码算法</h2>
+    <div class="menu-grid">
+      <button class="menu-btn" data-go="K_26">K_26</button>
+      <button class="menu-btn" data-go="K_9">K_9</button>
+      <button class="menu-btn" data-go="K_HASH">K_HASH</button>
+      <button class="menu-btn" data-go="K_DIY">K_DIY</button>
+    </div>
+  </div>
+
+  <!-- 页面3：K_26 -->
+  <div class="card hidden" id="page-K_26">
+    <div class="topbar"><button class="back" data-back>返回</button><h3>K_26</h3></div>
+    <label>明文</label>
+    <input type="text" class="plain" placeholder="请输入">
+    <button class="gen" data-algo="K_26">生成</button>
+    <div class="out"><span class="placeholder">—</span></div>
+    <div class="mid hidden"></div>
+    <button class="copy">复制</button>
+  </div>
+
+  <!-- 页面4：K_9 -->
+  <div class="card hidden" id="page-K_9">
+    <div class="topbar"><button class="back" data-back>返回</button><h3>K_9</h3></div>
+    <label>明文</label>
+    <input type="text" class="plain" placeholder="请输入">
+    <button class="gen" data-algo="K_9">生成</button>
+    <div class="out"><span class="placeholder">—</span></div>
+    <div class="mid hidden"></div>
+    <button class="copy">复制</button>
+  </div>
+
+  <!-- 页面5：K_HASH -->
+  <div class="card hidden" id="page-K_HASH">
+    <div class="topbar"><button class="back" data-back>返回</button><h3>K_HASH</h3></div>
+    <label>明文</label>
+    <input type="text" class="plain" placeholder="请输入">
+    <button class="gen" data-algo="K_HASH">生成</button>
+    <div class="out"><span class="placeholder">—</span></div>
+    <div class="mid hidden"></div>
+    <button class="copy">复制</button>
+  </div>
+
+  <!-- 页面6：K_DIY -->
+  <div class="card hidden" id="page-K_DIY">
+    <div class="topbar"><button class="back" data-back>返回</button><h3>K_DIY</h3></div>
+    <label>明文</label>
+    <input type="text" class="plain" placeholder="请输入">
+    <button class="gen" data-algo="K_DIY">生成</button>
+    <div class="out"><span class="placeholder">—</span></div>
+    <div class="mid hidden"></div>
+    <button class="copy">复制</button>
+  </div>
+
+  <!-- 页面7：映射表编辑 -->
+  <div class="card hidden" id="page-MAP">
+    <div class="topbar"><button class="back" data-back>返回</button><h3 id="mapTitle">映射表</h3></div>
+    <div id="mapEditor"></div>
+    <div class="toolbar">
+      <button class="btn-mini" id="mapReset">恢复默认</button>
+      <button class="btn-mini primary" id="mapSave">保存</button>
+      <button class="btn-mini" id="mapExport">导出</button>
+      <button class="btn-mini" id="mapImportBtn">导入</button>
+    </div>
+    <input type="file" id="mapImport" accept=".json,application/json" class="hidden">
+    <div class="hint">保存后写入本机存储，下次打开自动加载。建议定期"导出"备份。</div>
+  </div>
+
+</div>
+<div class="toast" id="toast"></div>
+
+<script>
+/* ========== 基础工具 ========== */
+const $  = (s, r = document) => r.querySelector(s);
+const $$ = (s, r = document) => [...r.querySelectorAll(s)];
+
+function toast(msg) {
+  const t = $("#toast");
+  t.textContent = msg; t.classList.add("show");
+  clearTimeout(t._timer);
+  t._timer = setTimeout(() => t.classList.remove("show"), 1600);
+}
+
+async function copyText(text) {
+  if (!text) { toast("没有可复制的内容"); return; }
+  try { await navigator.clipboard.writeText(text); toast("已复制"); }
+  catch (e) {
+    const ta = document.createElement("textarea");
+    ta.value = text; ta.style.position = "fixed"; ta.style.opacity = "0";
+    document.body.appendChild(ta); ta.select();
+    try { document.execCommand("copy"); toast("已复制"); }
+    catch (e2) { toast("复制失败，请手动选择"); }
+    document.body.removeChild(ta);
+  }
+}
+
+/* ========== 首页密码 ========== */
+const PWD_PREFIX = "20140506";
+function todayPwd() {
+  const d = new Date();
+  return PWD_PREFIX + d.getFullYear()
+    + String(d.getMonth() + 1).padStart(2, "0")
+    + String(d.getDate()).padStart(2, "0");
+}
+
+/* ========== 页面路由 ========== */
+const PAGES = ["lockPage","menuPage","page-K_26","page-K_9",
+               "page-K_HASH","page-K_DIY","page-MAP"];
+let mapReturnPage = "menuPage";   // ← 全局唯一声明
+
+function show(pageId) {
+  PAGES.forEach(p => {
+    const el = $("#" + p);
+    if (el) el.classList.toggle("hidden", p !== pageId);
+  });
+  window.scrollTo(0, 0);
+}
+
+/* ========== 解锁 ========== */
+function doUnlock() {
+  if ($("#unlockPwd").value.trim() === todayPwd()) {
+    $("#lockErr").classList.add("hidden");
+    $("#unlockPwd").value = "";
+    show("menuPage");
+  } else $("#lockErr").classList.remove("hidden");
+}
+$("#unlockBtn").onclick = doUnlock;
+$("#unlockPwd").addEventListener("keydown", e => { if (e.key === "Enter") doUnlock(); });
+
+/* ========== 中文转拼音 ========== */
+const PINYIN_FALLBACK = {
+  "的":"de","一":"yi","是":"shi","不":"bu","了":"le","在":"zai","人":"ren","有":"you","我":"wo","他":"ta",
+  "这":"zhe","中":"zhong","大":"da","来":"lai","上":"shang","国":"guo","个":"ge","到":"dao","说":"shuo","们":"men",
+  "为":"wei","子":"zi","和":"he","你":"ni","地":"di","出":"chu","道":"dao","也":"ye","时":"shi","年":"nian",
+  "得":"de","就":"jiu","那":"na","要":"yao","下":"xia","以":"yi","生":"sheng","会":"hui","自":"zi","着":"zhe",
+  "去":"qu","之":"zhi","过":"guo","家":"jia","学":"xue","对":"dui","可":"ke","她":"ta","里":"li","后":"hou",
+  "小":"xiao","么":"me","心":"xin","多":"duo","天":"tian","而":"er","能":"neng","好":"hao","都":"dou","然":"ran",
+  "没":"mei","日":"ri","于":"yu","起":"qi","还":"hai","发":"fa","成":"cheng","事":"shi","只":"zhi","作":"zuo",
+  "当":"dang","想":"xiang","看":"kan","文":"wen","无":"wu","开":"kai","手":"shou","十":"shi","用":"yong","主":"zhu",
+  "行":"xing","方":"fang","又":"you","如":"ru","前":"qian","所":"suo","本":"ben","见":"jian","经":"jing","头":"tou",
+  "面":"mian","公":"gong","同":"tong","三":"san","已":"yi","老":"lao","从":"cong","动":"dong","两":"liang","长":"chang",
+  "知":"zhi","民":"min","样":"yang","现":"xian","分":"fen","将":"jiang","外":"wai","但":"dan","身":"shen","些":"xie",
+  "与":"yu","高":"gao","意":"yi","进":"jin","把":"ba","法":"fa","此":"ci","实":"shi","回":"hui","二":"er",
+  "理":"li","美":"mei","点":"dian","月":"yue","明":"ming","其":"qi","种":"zhong","声":"sheng","全":"quan","工":"gong",
+  "己":"ji","话":"hua","儿":"er","者":"zhe","向":"xiang","情":"qing","部":"bu","正":"zheng","名":"ming","定":"ding",
+  "女":"nv","问":"wen","力":"li","机":"ji","给":"gei","等":"deng","几":"ji","很":"hen","业":"ye","最":"zui",
+  "间":"jian","新":"xin","什":"shen","打":"da","便":"bian","位":"wei","因":"yin","重":"zhong","被":"bei","走":"zou",
+  "电":"dian","四":"si","第":"di","门":"men","相":"xiang","次":"ci","东":"dong","政":"zheng","海":"hai","口":"kou",
+  "使":"shi","教":"jiao","西":"xi","再":"zai","平":"ping","真":"zhen","听":"ting","世":"shi","气":"qi","信":"xin",
+  "北":"bei","少":"shao","关":"guan","并":"bing","内":"nei","加":"jia","化":"hua","由":"you","却":"que","代":"dai",
+  "军":"jun","产":"chan","入":"ru","先":"xian","山":"shan","五":"wu","太":"tai","水":"shui","万":"wan","市":"shi",
+  "眼":"yan","体":"ti","别":"bie","处":"chu","总":"zong","才":"cai","场":"chang","师":"shi","书":"shu","比":"bi",
+  "住":"zhu","员":"yuan","九":"jiu","笑":"xiao","性":"xing","通":"tong","目":"mu","华":"hua","报":"bao","立":"li",
+  "马":"ma","命":"ming","张":"zhang","活":"huo","难":"nan","神":"shen","数":"shu","件":"jian","安":"an","表":"biao",
+  "原":"yuan","车":"che","白":"bai","应":"ying","路":"lu","期":"qi","叫":"jiao","死":"si","常":"chang","提":"ti",
+  "感":"gan","金":"jin","何":"he","更":"geng","反":"fan","题":"ti","必":"bi","该":"gai","论":"lun","交":"jiao",
+  "果":"guo","放":"fang","做":"zuo","亲":"qin","选":"xuan","包":"bao","片":"pian","计":"ji","建":"jian","米":"mi",
+  "影":"ying","八":"ba","百":"bai","留":"liu","认":"ren","清":"qing","风":"feng","花":"hua","七":"qi",
+  "树":"shu","六":"liu","云":"yun","星":"xing","爱":"ai","红":"hong","春":"chun","夏":"xia","秋":"qiu","冬":"dong",
+  "朋":"peng","友":"you","密":"mi","码":"ma","算":"suan","器":"qi","英":"ying","字":"zi","输":"shu","入":"ru",
+  "改":"gai","保":"bao","存":"cun","复":"fu","制":"zhi","返":"fan","择":"ze","确":"que","测":"ce","试":"shi",
+  "效":"xiao","错":"cuo","误":"wu","功":"gong","失":"shi","败":"bai","账":"zhang","号":"hao",
+  "登":"deng","录":"lu","户":"hu","管":"guan","系":"xi","统":"tong","设":"she",
+  "置":"zhi","版":"ban","载":"zai","装":"zhuang","卸":"xie"
+};
+
+function zhToPinyin(text) {
+  // 完整字库优先（pinyin-pro）
+  if (window.pinyinPro && typeof window.pinyinPro.pinyin === "function") {
+    try {
+      return window.pinyinPro.pinyin(text, {
+        toneType: "none",
+        type: "array",
+        nonZh: "consecutive"
+      }).join("");
+    } catch (e) { /* 出错则走兜底 */ }
+  }
+  // 兜底：内置表 + Unicode
+  let out = "";
+  for (const ch of text) {
+    if (/[\u4e00-\u9fa5]/.test(ch)) {
+      out += PINYIN_FALLBACK[ch] || ("u" + ch.codePointAt(0).toString(16));
+    } else out += ch;
+  }
+  return out;
+}
+
+function normalize(text) {
+  return zhToPinyin(text).toLowerCase().replace(/[^a-z0-9]/g, "");
+}
+
+/* ========== 映射表 ========== */
+const LETTERS = "abcdefghijklmnopqrstuvwxyz".split("");
+
+const K26_DEFAULT = {
+  a:"1", z:"1", q:"1", b:"5", c:"3", d:"3", e:"3", f:"4", g:"5",
+  h:"6", i:"8", j:"7", k:"8", l:"9", m:"7", n:"6", o:"9", p:"0",
+  r:"4", s:"2", t:"5", u:"7", v:"4", w:"2", x:"2", y:"6",
+  "0":"0","1":"1","2":"2","3":"3","4":"4","5":"5","6":"6","7":"7","8":"8","9":"9"
+};
+
+const K9_DEFAULT = (() => {
+  const m = {};
+  const g = { "2":"abc","3":"def","4":"ghi","5":"jkl","6":"mno",
+              "7":"pqr","8":"tuv","9":"wxy","1":"s","0":"z" };
+  for (const [n, cs] of Object.entries(g)) for (const c of cs) m[c] = n;
+  "0123456789".split("").forEach(n => m[n] = n);
+  return m;
+})();
+
+const KDIY_DEFAULT = (() => {
+  const m = {};
+  ["abc","def","ghi","jkl","mno","pqr","stu","vwx","yz"]
+    .forEach((g, i) => { for (const c of g) m[c] = String((i + 1) % 10); });
+  "0123456789".split("").forEach(n => m[n] = n);
+  return m;
+})();
+
+const STORE_KEY = { K_26: "pwd_map_K26", K_9: "pwd_map_K9", K_DIY: "pwd_map_KDIY" };
+const DEFAULTS  = { K_26: K26_DEFAULT, K_9: K9_DEFAULT, K_DIY: KDIY_DEFAULT };
+
+function loadMap(algo) {
+  const base = { ...DEFAULTS[algo] };
+  try {
+    const s = localStorage.getItem(STORE_KEY[algo]);
+    if (s) {
+      const saved = JSON.parse(s);
+      for (const k of LETTERS) if (k in saved) base[k] = String(saved[k]);
+      "0123456789".split("").forEach(n => { if (n in saved) base[n] = String(saved[n]); });
+    }
+  } catch (e) {}
+  return base;
+}
+
+const runtimeMap = {
+  K_26:  loadMap("K_26"),
+  K_9:   loadMap("K_9"),
+  K_DIY: loadMap("K_DIY")
+};
+
+function saveMap(algo) {
+  try {
+    localStorage.setItem(STORE_KEY[algo], JSON.stringify(runtimeMap[algo]));
+    return true;
+  } catch (e) { return false; }
+}
+
+/* ========== 算法 ========== */
+function mapEncode(text, algo) {
+  const norm = normalize(text);
+  if (!norm) return { norm: "", code: "" };
+  const m = runtimeMap[algo];
+  const code = [...norm].map(c => m[c] !== undefined ? m[c] : "?").join("-");
+  return { norm, code };
+}
+
+function hashEncode(text) {
+  const norm = normalize(text);
+  if (!norm) return { norm: "", code: "" };
+  let h = 0x811c9dc5;
+  for (let i = 0; i < norm.length; i++) {
+    h ^= norm.charCodeAt(i);
+    h = Math.imul(h, 0x01000193) >>> 0;
+  }
+  let g = 0x811c9dc5;
+  const rev = [...norm].reverse().join("");
+  for (let i = 0; i < rev.length; i++) {
+    g ^= rev.charCodeAt(i);
+    g = Math.imul(g, 0x01000193) >>> 0;
+  }
+  const mixed = (h ^ Math.imul(g, 0x85ebca6b)) >>> 0;
+  return { norm, code: String(mixed).padStart(10, "0") };
+}
+
+function encode(algo, text) {
+  return algo === "K_HASH" ? hashEncode(text) : mapEncode(text, algo);
+}
+
+/* ========== 算法页交互 ========== */
+$$("[data-algo]").forEach(btn => {
+  btn.onclick = () => {
+    const algo = btn.dataset.algo;
+    const card = btn.closest(".card");
+    const input = $(".plain", card);
+    const out = $(".out", card);
+    const mid = $(".mid", card);
+
+    const txt = input.value.trim();
+    if (!txt) {
+      out.innerHTML = '<span class="placeholder">请先输入明文</span>';
+      mid.classList.add("hidden");
+      toast("请先输入明文");
+      return;
+    }
+
+    const { norm, code } = encode(algo, txt);
+    out.textContent = code || "—";
+    out.style.color = code ? "#7cf5a0" : "#52525b";
+
+    // 校对用中间序列（后期可删）
+    if (norm && code) {
+      const arrow = algo === "K_HASH" ? " → 哈希 → " : " → 逐位 → ";
+      mid.innerHTML = `<b>序列：</b>${norm}<br><b>长度：</b>${norm.length}${arrow}${code}`;
+      mid.classList.remove("hidden");
+    } else mid.classList.add("hidden");
+  };
+});
+
+$$(".copy").forEach(btn => {
+  btn.onclick = () => {
+    const out = $(".out", btn.closest(".card"));
+    const text = out.textContent.trim();
+    if (!text || text === "—") { toast("没有可复制的内容"); return; }
+    copyText(text);
+  };
+});
+
+$$(".plain").forEach(inp => {
+  let composing = false;
+
+  // 输入法开始组合（开始打拼音）
+  inp.addEventListener("compositionstart", () => { composing = true; });
+  // 输入法组合结束（汉字上屏）
+  inp.addEventListener("compositionend", () => {
+    composing = false;
+    filterPlain(inp);   // 组合结束后才清理
+  });
+
+  // 普通输入：仅在非组合状态下清理
+  inp.addEventListener("input", () => {
+    if (composing) return;   // 组合中，放过它，别动
+    filterPlain(inp);
+  });
+
+  inp.addEventListener("keydown", e => {
+    if (e.key === "Enter" && !composing) {
+      const gen = inp.closest(".card").querySelector("[data-algo]");
+      if (gen) gen.click();
+    }
+  });
+});
+
+/* 过滤函数：抽出单独一份 */
+function filterPlain(inp) {
+  const clean = inp.value.replace(/[^\u4e00-\u9fa5a-zA-Z0-9]/g, "");
+  if (clean !== inp.value) {
+    // 尽量保持光标位置，避免跳到开头
+    const pos = inp.selectionStart;
+    const diff = inp.value.length - clean.length;
+    inp.value = clean;
+    const newPos = Math.max(0, (pos || 0) - diff);
+    try { inp.setSelectionRange(newPos, newPos); } catch (e) {}
+  }
+}
+
+/* ========== 导航 ========== */
+$$("[data-go]").forEach(b => b.onclick = () => show("page-" + b.dataset.go));
+$$("[data-back]").forEach(b => b.onclick = () => show("menuPage"));
+
+["K_26","K_9","K_DIY"].forEach(algo => {
+  const t = $(`#page-${algo} h3`);
+  if (t) t.addEventListener("dblclick", () => openMapEditor(algo));
+});
+
+/* ========== 映射表编辑 ========== */
+let editingAlgo = "K_26";   // ← mapReturnPage 已在上面声明，此处不再重复
+
+function openMapEditor(algo) {
+  editingAlgo = algo;
+  mapReturnPage = "page-" + algo;
+  $("#mapTitle").textContent = algo + " 映射表";
+  renderMapEditor();
+  show("page-MAP");
+}
+
+function renderMapEditor() {
+  const m = runtimeMap[editingAlgo];
+  const box = $("#mapEditor");
+  box.innerHTML = "";
+
+  const g1 = document.createElement("div");
+  g1.className = "map-grid";
+  LETTERS.forEach(ch => {
+    const row = document.createElement("div");
+    row.className = "map-row";
+    row.innerHTML = `<span>${ch}</span>
+      <input type="number" min="0" max="9" value="${m[ch] ?? ""}" data-ch="${ch}">`;
+    g1.appendChild(row);
+  });
+  box.appendChild(g1);
+
+  const lbl = document.createElement("label");
+  lbl.textContent = "数字键对应";
+  box.appendChild(lbl);
+
+  const g2 = document.createElement("div");
+  g2.className = "map-grid";
+  "0123456789".split("").forEach(n => {
+    const row = document.createElement("div");
+    row.className = "map-row";
+    row.innerHTML = `<span>${n}</span>
+      <input type="number" min="0" max="9" value="${m[n] ?? ""}" data-ch="${n}">`;
+    g2.appendChild(row);
+  });
+  box.appendChild(g2);
+
+  $$("#mapEditor input").forEach(inp => {
+    inp.addEventListener("input", () => {
+      const ch = inp.dataset.ch;
+      let v = parseInt(inp.value, 10);
+      if (isNaN(v)) v = 0;
+      runtimeMap[editingAlgo][ch] = String(v);
+    });
+  });
+}
+
+$("#mapReset").onclick = () => {
+  runtimeMap[editingAlgo] = { ...DEFAULTS[editingAlgo] };
+  renderMapEditor();
+  toast("已恢复默认（未保存）");
+};
+
+$("#mapSave").onclick = () => {
+  saveMap(editingAlgo) ? toast("已保存") : toast("保存失败");
+};
+
+$("#mapExport").onclick = () => {
+  const data = JSON.stringify(runtimeMap[editingAlgo], null, 2);
+  const blob = new Blob([data], { type: "application/json" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url; a.download = editingAlgo + "_map.json"; a.click();
+  URL.revokeObjectURL(url);
+  toast("已导出");
+};
+
+$("#mapImportBtn").onclick = () => $("#mapImport").click();
+$("#mapImport").onchange = e => {
+  const file = e.target.files[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = ev => {
+    try {
+      const obj = JSON.parse(ev.target.result);
+      for (const k of LETTERS) if (k in obj) runtimeMap[editingAlgo][k] = String(obj[k]);
+      "0123456789".split("").forEach(n => {
+        if (n in obj) runtimeMap[editingAlgo][n] = String(obj[n]);
+      });
+      renderMapEditor();
+      toast("已导入（请点保存）");
+    } catch (err) { toast("文件格式错误"); }
+  };
+  reader.readAsText(file);
+  e.target.value = "";
+};
+
+$("#page-MAP [data-back]").onclick = () => show(mapReturnPage);
+
+/* ========== 启动 ========== */
+show("lockPage");
+</script>
+</body>
+</html>
