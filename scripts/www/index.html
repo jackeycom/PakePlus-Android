@@ -101,6 +101,7 @@
 <body>
 <div class="wrap">
 
+  <!-- 页面1：解锁 -->
   <div class="card" id="lockPage">
     <h2>请输入密码</h2>
     <input type="password" id="unlockPwd" autocomplete="off" inputmode="numeric">
@@ -108,6 +109,7 @@
     <div class="err hidden" id="lockErr">密码错误</div>
   </div>
 
+  <!-- 页面2：算法选择 -->
   <div class="card hidden" id="menuPage">
     <h2>选择密码算法</h2>
     <div class="menu-grid">
@@ -118,6 +120,7 @@
     </div>
   </div>
 
+  <!-- 页面3：K_26 -->
   <div class="card hidden" id="page-K_26">
     <div class="topbar"><button class="back" data-back>返回</button><h3 data-edit="K_26">K_26</h3></div>
     <label>明文</label>
@@ -128,6 +131,7 @@
     <button class="copy">复制</button>
   </div>
 
+  <!-- 页面4：K_9 -->
   <div class="card hidden" id="page-K_9">
     <div class="topbar"><button class="back" data-back>返回</button><h3 data-edit="K_9">K_9</h3></div>
     <label>明文</label>
@@ -138,6 +142,7 @@
     <button class="copy">复制</button>
   </div>
 
+  <!-- 页面5：K_HASH -->
   <div class="card hidden" id="page-K_HASH">
     <div class="topbar"><button class="back" data-back>返回</button><h3>K_HASH</h3></div>
     <label>明文</label>
@@ -148,6 +153,7 @@
     <button class="copy">复制</button>
   </div>
 
+  <!-- 页面6：K_DIY -->
   <div class="card hidden" id="page-K_DIY">
     <div class="topbar"><button class="back" data-back>返回</button><h3 data-edit="K_DIY">K_DIY</h3></div>
     <label>明文</label>
@@ -158,6 +164,7 @@
     <button class="copy">复制</button>
   </div>
 
+  <!-- 页面7：映射表编辑 -->
   <div class="card hidden" id="page-MAP">
     <div class="topbar"><button class="back" data-back>返回</button><h3 id="mapTitle">映射表</h3></div>
     <div id="mapEditor"></div>
@@ -166,6 +173,7 @@
       <button class="btn-mini primary" id="mapSave">保存</button>
       <button class="btn-mini" id="mapExport">导出</button>
       <button class="btn-mini" id="mapImportBtn">导入</button>
+      <button class="btn-mini" id="mapDiag">诊断</button>
     </div>
     <input type="file" id="mapImport" accept=".json,application/json" class="hidden">
     <div class="hint">点算法页右上角标题可进入对应映射表。</div>
@@ -176,7 +184,9 @@
 <div class="toast" id="toast"></div>
 
 <script>
-/* ========== 基础工具 ========== */
+/* ============================================================
+   〇、基础工具
+   ============================================================ */
 const $  = (s, r = document) => r.querySelector(s);
 const $$ = (s, r = document) => [...r.querySelectorAll(s)];
 
@@ -187,22 +197,65 @@ function toast(msg) {
   t._timer = setTimeout(() => t.classList.remove("show"), 1800);
 }
 
+/* 复制（返回是否成功） */
 async function copyText(text) {
-  if (!text) { toast("没有可复制的内容"); return; }
-  try { await navigator.clipboard.writeText(text); toast("已复制"); return; }
-  catch (e) {}
-  // 安卓 WebView 回退
-  const ta = document.createElement("textarea");
-  ta.value = text; ta.style.position = "fixed"; ta.style.opacity = "0";
-  document.body.appendChild(ta);
-  ta.focus(); ta.select();
-  try { document.execCommand("copy"); toast("已复制"); }
-  catch (e2) { toast("复制失败，请手动选择"); }
-  document.body.removeChild(ta);
+  if (!text) { toast("没有可复制的内容"); return false; }
+  try {
+    await navigator.clipboard.writeText(text);
+    toast("已复制");
+    return true;
+  } catch (e) {
+    const ta = document.createElement("textarea");
+    ta.value = text;
+    ta.style.position = "fixed";
+    ta.style.opacity = "0";
+    document.body.appendChild(ta);
+    ta.focus(); ta.select();
+    let ok = false;
+    try { ok = document.execCommand("copy"); } catch (e2) { ok = false; }
+    document.body.removeChild(ta);
+    toast(ok ? "已复制" : "复制失败，请手动选择");
+    return ok;
+  }
 }
 
-/* ========== 首页密码 ========== */
-const PWD_PREFIX = "20140506";
+/* ============================================================
+   一、诊断日志
+   ============================================================ */
+const PROJECT_NAME = "pwdgen";
+const ENV_LOG = [];
+
+function logLine(s) {
+  const t = new Date().toLocaleTimeString();
+  ENV_LOG.push("[" + t + "] " + s);
+  try { console.log(s); } catch (e) {}
+}
+
+function getTauri() {
+  return window.__TAURI__ || window.tauri || null;
+}
+
+(function recordEnv() {
+  const T = getTauri();
+  logLine("UA: " + navigator.userAgent);
+  logLine("Tauri: " + (T ? "存在" : "不存在"));
+  logLine("navigator.share: " + (!!navigator.share));
+  logLine("navigator.canShare: " + (!!navigator.canShare));
+  logLine("clipboard: " + (!!(navigator.clipboard && navigator.clipboard.writeText)));
+  if (T) {
+    logLine("Tauri.keys: " + Object.keys(T).join(","));
+    if (T.dialog) logLine("dialog.keys: " + Object.keys(T.dialog).join(","));
+    if (T.fs)     logLine("fs.keys: " + Object.keys(T.fs).join(","));
+    if (T.plugin) logLine("plugin.keys: " + Object.keys(T.plugin).join(","));
+    if (T.core)   logLine("core.keys: " + Object.keys(T.core).join(","));
+    if (T.invoke) logLine("invoke: 存在");
+  }
+})();
+
+/* ============================================================
+   二、首页密码：20140506 + yyyyMMdd（无加号）
+   ============================================================ */
+const PWD_PREFIX = "";
 function todayPwd() {
   const d = new Date();
   return PWD_PREFIX + d.getFullYear()
@@ -210,10 +263,12 @@ function todayPwd() {
     + String(d.getDate()).padStart(2, "0");
 }
 
-/* ========== 路由 ========== */
+/* ============================================================
+   三、页面路由
+   ============================================================ */
 const PAGES = ["lockPage","menuPage","page-K_26","page-K_9",
                "page-K_HASH","page-K_DIY","page-MAP"];
-let mapReturnPage = "menuPage";
+let mapReturnPage = "menuPage";   // 全局唯一声明
 
 function show(pageId) {
   PAGES.forEach(p => {
@@ -223,11 +278,14 @@ function show(pageId) {
   window.scrollTo(0, 0);
 }
 
-/* ========== 解锁 ========== */
+/* ============================================================
+   四、解锁
+   ============================================================ */
 function doUnlock() {
   if ($("#unlockPwd").value.trim() === todayPwd()) {
     $("#lockErr").classList.add("hidden");
     $("#unlockPwd").value = "";
+    logLine("解锁成功");
     show("menuPage");
   } else {
     $("#lockErr").classList.remove("hidden");
@@ -236,7 +294,9 @@ function doUnlock() {
 $("#unlockBtn").onclick = doUnlock;
 $("#unlockPwd").addEventListener("keydown", e => { if (e.key === "Enter") doUnlock(); });
 
-/* ========== 中文转拼音 ========== */
+/* ============================================================
+   五、中文转拼音
+   ============================================================ */
 const PINYIN_FALLBACK = {
   "的":"de","一":"yi","是":"shi","不":"bu","了":"le","在":"zai","人":"ren","有":"you","我":"wo","他":"ta",
   "这":"zhe","中":"zhong","大":"da","来":"lai","上":"shang","国":"guo","个":"ge","到":"dao","说":"shuo","们":"men",
@@ -294,9 +354,12 @@ function normalize(text) {
   return zhToPinyin(text).toLowerCase().replace(/[^a-z0-9]/g, "");
 }
 
-/* ========== 映射表默认值 ========== */
+/* ============================================================
+   六、映射表默认值
+   ============================================================ */
 const LETTERS = "abcdefghijklmnopqrstuvwxyz".split("");
 
+/* K_26：键盘列映射 */
 const K26_DEFAULT = {
   a:"1", z:"1", q:"1",
   b:"5", c:"3", d:"3", e:"3", f:"4", g:"5", h:"6", i:"8", j:"7",
@@ -305,6 +368,7 @@ const K26_DEFAULT = {
   "0":"0","1":"1","2":"2","3":"3","4":"4","5":"5","6":"6","7":"7","8":"8","9":"9"
 };
 
+/* K_9：s→1, z→0 */
 const K9_DEFAULT = (() => {
   const m = {};
   const g = {
@@ -324,6 +388,7 @@ const K9_DEFAULT = (() => {
   return m;
 })();
 
+/* K_DIY：默认均匀三分组 */
 const KDIY_DEFAULT = (() => {
   const m = {};
   ["abc","def","ghi","jkl","mno","pqr","stu","vwx","yz"]
@@ -332,7 +397,7 @@ const KDIY_DEFAULT = (() => {
   return m;
 })();
 
-/* 存储键加 _android 后缀，与 PC 版互不干扰 */
+/* 存储键加 _android 后缀 */
 const STORE_KEY = { K_26: "pwd_map_K26_android", K_9: "pwd_map_K9_android", K_DIY: "pwd_map_KDIY_android" };
 const DEFAULTS  = { K_26: K26_DEFAULT, K_9: K9_DEFAULT, K_DIY: KDIY_DEFAULT };
 
@@ -362,7 +427,9 @@ function saveMap(algo) {
   } catch (e) { return false; }
 }
 
-/* ========== 算法 ========== */
+/* ============================================================
+   七、算法
+   ============================================================ */
 function mapEncode(text, algo) {
   const norm = normalize(text);
   if (!norm) return { norm: "", code: "" };
@@ -393,7 +460,9 @@ function encode(algo, text) {
   return algo === "K_HASH" ? hashEncode(text) : mapEncode(text, algo);
 }
 
-/* ========== 算法页交互 ========== */
+/* ============================================================
+   八、算法页交互
+   ============================================================ */
 $$("[data-algo]").forEach(btn => {
   btn.onclick = () => {
     const algo = btn.dataset.algo;
@@ -431,6 +500,7 @@ $$(".copy").forEach(btn => {
   };
 });
 
+/* 明文输入：中文/英文/数字，兼容输入法 */
 function filterPlain(inp) {
   const clean = inp.value.replace(/[^\u4e00-\u9fa5a-zA-Z0-9]/g, "");
   if (clean !== inp.value) {
@@ -455,12 +525,16 @@ $$(".plain").forEach(inp => {
   });
 });
 
-/* ========== 导航 ========== */
+/* ============================================================
+   九、导航
+   ============================================================ */
 $$("[data-go]").forEach(b => b.onclick = () => show("page-" + b.dataset.go));
 $$("[data-back]").forEach(b => b.onclick = () => show("menuPage"));
 $$("[data-edit]").forEach(h => { h.onclick = () => openMapEditor(h.dataset.edit); });
 
-/* ========== 映射编辑 ========== */
+/* ============================================================
+   十、映射表编辑
+   ============================================================ */
 let editingAlgo = "K_26";
 
 function openMapEditor(algo) {
@@ -523,93 +597,125 @@ $("#mapSave").onclick = () => {
 };
 
 /* ============================================================
-   Android 版导出：Tauri fs → 剪贴板
-   （不使用 <a download>，安卓 WebView 不支持）
+   十一、导出：Tauri → 分享文件 → 剪贴板
    ============================================================ */
-const PROJECT_NAME = "pwdgen";
-
-function getTauri() { return window.__TAURI__ || window.tauri || null; }
-
-function buildFilename() {
-  return editingAlgo + "_map_" + PROJECT_NAME + ".json";
-}
-
 $("#mapExport").onclick = async () => {
   const data = JSON.stringify(runtimeMap[editingAlgo], null, 2);
-  const filename = buildFilename();
+  const filename = editingAlgo + "_map_" + PROJECT_NAME + ".json";
+  logLine("=== 导出开始 " + filename + " ===");
+
+  /* 第 1 级：Tauri */
   const T = getTauri();
+  if (!T) {
+    logLine("L1 跳过：无 Tauri 对象");
+  } else {
+    const invoke = T.invoke || (T.core && T.core.invoke);
 
-  // ① 优先 Tauri 文件对话框
-  if (T) {
-    try {
-      const dialog = T.dialog;
-      const fs = T.fs;
-      const invoke = T.invoke || (T.core && T.core.invoke);
-
-      if (invoke) {
+    if (invoke) {
+      try {
+        logLine("L1a invoke dialog|save");
         const path = await invoke("plugin:dialog|save", {
           options: {
             defaultPath: filename,
             filters: [{ name: "JSON", extensions: ["json"] }]
           }
-        }).catch(() => null);
+        });
+        logLine("L1a path = " + path);
         if (path) {
           await invoke("plugin:fs|write_text_file", { path, contents: data });
-          toast("已导出");
+          logLine("L1a 写入成功");
+          toast("已保存到：" + path);
           return;
-        }
-        if (path === null) return;   // 用户取消
-      }
-      if (dialog && dialog.save) {
+        } else { logLine("L1a 用户取消"); return; }
+      } catch (e) { logLine("L1a 失败：" + e); }
+    } else { logLine("L1a 无 invoke"); }
+
+    const dialog = T.dialog;
+    const fs = T.fs;
+    if (dialog && dialog.save) {
+      try {
+        logLine("L1b dialog.save");
         const path = await dialog.save({
           defaultPath: filename,
           filters: [{ name: "JSON", extensions: ["json"] }]
         });
-        if (!path) return;
-        if (fs && fs.writeTextFile) { await fs.writeTextFile(path, data); toast("已导出"); return; }
-      }
-    } catch (e) {
-      console.warn("Tauri 导出失败，改用剪贴板", e);
-    }
+        logLine("L1b path = " + path);
+        if (!path) { logLine("L1b 用户取消"); return; }
+        if (fs && fs.writeTextFile) {
+          await fs.writeTextFile(path, data);
+          logLine("L1b 写入成功"); toast("已保存"); return;
+        } else if (fs && fs.writeText) {
+          await fs.writeText(path, data);
+          logLine("L1b 写入成功"); toast("已保存"); return;
+        } else { logLine("L1b 无 fs 写入方法"); }
+      } catch (e) { logLine("L1b 失败：" + e); }
+    } else { logLine("L1b 无 dialog.save"); }
   }
 
-  // ② 剪贴板兜底（安卓上最可靠）
-  copyText(data);
-  setTimeout(() => toast("Tauri 不可用，内容已复制到剪贴板"), 1700);
+  /* 第 2 级：分享文件 */
+  if (navigator.share && navigator.canShare) {
+    try {
+      const file = new File([data], filename, { type: "application/json" });
+      const canShareFile = navigator.canShare({ files: [file] });
+      logLine("L2 canShare(files) = " + canShareFile);
+      if (canShareFile) {
+        await navigator.share({ files: [file], title: filename, text: data });
+        logLine("L2 分享成功");
+        toast("已通过分享导出");
+        return;
+      }
+    } catch (e) {
+      if (e && e.name === "AbortError") { logLine("L2 用户取消"); return; }
+      logLine("L2 失败：" + e);
+    }
+  } else { logLine("L2 跳过：无 share/canShare"); }
+
+  /* 第 3 级：剪贴板 */
+  const ok = await copyText(data);
+  logLine("L3 剪贴板：" + (ok ? "成功" : "失败"));
+  if (ok) setTimeout(() => toast("已复制到剪贴板（可粘贴保存为 json）"), 1500);
 };
 
-/* Android 版导入：Tauri 选文件 → input 选文件 */
+/* ============================================================
+   十二、导入：Tauri → input
+   ============================================================ */
 $("#mapImportBtn").onclick = async () => {
+  logLine("=== 导入开始 ===");
   const T = getTauri();
   if (T) {
-    try {
-      const dialog = T.dialog;
-      const fs = T.fs;
-      const invoke = T.invoke || (T.core && T.core.invoke);
+    const invoke = T.invoke || (T.core && T.core.invoke);
+    const dialog = T.dialog;
+    const fs = T.fs;
 
+    try {
       let path = null;
       if (invoke) {
+        logLine("导入 L1a invoke dialog|open");
         path = await invoke("plugin:dialog|open", {
-          options: {
-            filters: [{ name: "JSON", extensions: ["json"] }],
-            multiple: false
-          }
-        }).catch(() => null);
+          options: { filters: [{ name: "JSON", extensions: ["json"] }], multiple: false }
+        });
+        logLine("导入 L1a path = " + path);
       } else if (dialog && dialog.open) {
+        logLine("导入 L1b dialog.open");
         path = await dialog.open({
           filters: [{ name: "JSON", extensions: ["json"] }]
         });
+        logLine("导入 L1b path = " + path);
       }
-      if (!path) return;
+
+      if (!path) { logLine("导入取消"); return; }
 
       let text = null;
       if (invoke && !fs) text = await invoke("plugin:fs|read_text_file", { path });
       else if (fs && fs.readTextFile) text = await fs.readTextFile(path);
-      if (text) { applyImported(text); return; }
-    } catch (e) {
-      console.warn("Tauri 导入失败，改用文件选择", e);
-    }
+      else if (fs && fs.readText) text = await fs.readText(path);
+
+      if (text) { logLine("导入读取成功"); applyImported(text); return; }
+      logLine("导入读取失败：无可用读取方法");
+    } catch (e) { logLine("导入失败：" + e); }
   }
+
+  logLine("导入回退到 input 选文件");
   $("#mapImport").click();
 };
 
@@ -617,7 +723,7 @@ $("#mapImport").onchange = e => {
   const file = e.target.files[0];
   if (!file) return;
   const reader = new FileReader();
-  reader.onload = ev => applyImported(ev.target.result);
+  reader.onload = ev => { logLine("input 读取成功"); applyImported(ev.target.result); };
   reader.readAsText(file);
   e.target.value = "";
 };
@@ -634,10 +740,41 @@ function applyImported(text) {
   } catch (e) { toast("文件格式错误"); }
 }
 
+/* ============================================================
+   十三、诊断按钮：环境 + 日志 → 剪贴板
+   ============================================================ */
+$("#mapDiag").onclick = async () => {
+  const T = getTauri();
+  const report = [
+    "===== 环境诊断报告 =====",
+    "时间: " + new Date().toLocaleString(),
+    "UA: " + navigator.userAgent,
+    "Tauri 对象: " + (T ? "存在" : "不存在"),
+    T ? "Tauri 键: " + Object.keys(T).join(",") : "",
+    T && T.dialog ? "dialog 键: " + Object.keys(T.dialog).join(",") : "dialog: 无",
+    T && T.fs ? "fs 键: " + Object.keys(T.fs).join(",") : "fs: 无",
+    T && T.plugin ? "plugin 键: " + Object.keys(T.plugin).join(",") : "plugin: 无",
+    T && T.core ? "core 键: " + Object.keys(T.core).join(",") : "core: 无",
+    "navigator.share: " + (!!navigator.share),
+    "navigator.canShare: " + (!!navigator.canShare),
+    "clipboard API: " + (!!(navigator.clipboard && navigator.clipboard.writeText)),
+    "",
+    "===== 操作日志 =====",
+    ...ENV_LOG
+  ].filter(Boolean).join("\n");
+
+  const ok = await copyText(report);
+  try { localStorage.setItem("pwd_diag_last", report); } catch (e) {}
+  if (ok) setTimeout(() => toast("诊断报告已复制，请粘贴发送"), 1500);
+};
+
 $("#page-MAP [data-back]").onclick = () => show(mapReturnPage);
 
-/* ========== 启动 ========== */
+/* ============================================================
+   十四、启动
+   ============================================================ */
 show("lockPage");
+logLine("应用启动完成");
 </script>
 </body>
 </html>
