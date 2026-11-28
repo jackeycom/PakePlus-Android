@@ -56,7 +56,7 @@
   .ok {
     margin-top: 12px; padding: 10px 12px; border-radius: 8px;
     background: rgba(80,220,140,.08); border: 1px solid rgba(80,220,140,.3);
-    color: #7cf5a0; font-size: 12px; line-height: 1.6;
+    color: #7cf5a0; font-size: 12px; line-height: 1.6; word-break: break-all;
   }
   .hidden { display: none !important; }
 
@@ -92,6 +92,7 @@
   }
   .btn-mini.primary { background: #7c8cff; }
   .btn-mini.danger { background: #8a4a4a; }
+  .btn-full { width: 100%; }
   .toast {
     position: fixed; left: 50%; bottom: calc(30px + env(safe-area-inset-bottom));
     transform: translateX(-50%);
@@ -122,7 +123,7 @@
       <button class="menu-btn" data-go="K_HASH">K_HASH</button>
       <button class="menu-btn" data-go="K_DIY">K_DIY</button>
     </div>
-    <button class="btn-mini" id="openBackup" style="width:100%; margin-top:16px;">数据备份 / 恢复（全部）</button>
+    <button class="btn-mini btn-full" id="openBackup" style="margin-top:16px;">数据备份 / 恢复（全部）</button>
   </div>
 
   <!-- 页面3：K_26 -->
@@ -187,19 +188,24 @@
     <div class="hint">一次性备份或恢复全部映射表（K_26 / K_9 / K_DIY）。</div>
 
     <button id="bkExport">📤 导出全部映射（另存为 / 剪贴板）</button>
-    <button id="bkImportFile">📥 导入：选择文件</button>
-    <button id="bkImportClip">📋 导入：从剪贴板粘贴</button>
+    <button class="btn-mini btn-full" id="bkExportClip" style="margin-top:10px;">📋 仅用剪贴板导出（跳过对话框）</button>
+    <button class="btn-mini btn-full" id="bkTestSave" style="margin-top:10px;">🧪 测试另存为对话框</button>
+
+    <button class="btn-mini btn-full" id="bkImportFile" style="margin-top:10px;">📥 导入：选择文件</button>
+    <button class="btn-mini btn-full" id="bkImportClip" style="margin-top:10px;">📋 导入：从剪贴板读取</button>
+    <button class="btn-mini btn-full" id="bkImportText" style="margin-top:10px;">📝 导入：从下方文本框导入</button>
 
     <div style="margin-top:18px;">
-      <label>最近一次导出的内容（可手动复制）</label>
-      <textarea id="bkText" rows="6" placeholder="点上面的导出后，内容会显示在这里"></textarea>
+      <label>最近一次导出/导入的内容</label>
+      <textarea id="bkText" rows="6" placeholder="点上面的导出后，内容会显示在这里；也可把要导入的 JSON 粘贴进来"></textarea>
       <div class="toolbar">
         <button class="btn-mini" id="bkCopy">复制上面内容</button>
+        <button class="btn-mini" id="bkPaste">从剪贴板粘贴到这里</button>
         <button class="btn-mini danger" id="bkClear">清空</button>
       </div>
     </div>
 
-    <button class="btn-mini" id="bkDiag" style="width:100%; margin-top:18px;">🔍 复制诊断报告</button>
+    <button class="btn-mini btn-full" id="bkDiag" style="margin-top:18px;">🔍 复制诊断报告</button>
     <div id="bkStatus" class="ok hidden"></div>
     <div class="warn">⚠️ 映射数据存在本机应用内，卸载或清理数据会丢失，请定期导出备份。</div>
     <input type="file" id="bkFile" accept=".json,application/json,.txt,text/plain" class="hidden">
@@ -243,7 +249,7 @@ function setStatus(msg, isOk) {
   const el = $("#bkStatus");
   if (!el) return;
   el.textContent = msg;
-  el.className = isOk === false ? "warn" : "ok";
+  el.className = (isOk === false) ? "warn" : "ok";
   el.classList.remove("hidden");
 }
 
@@ -270,6 +276,7 @@ function getTauri() {
   logLine("share: " + (!!navigator.share) + " / canShare: " + (!!navigator.canShare));
   logLine("clipboard: " + (!!(navigator.clipboard && navigator.clipboard.writeText)));
   logLine("showSaveFilePicker: " + (!!window.showSaveFilePicker));
+  logLine("isSecureContext: " + window.isSecureContext);
   if (T) {
     logLine("Tauri.keys: " + Object.keys(T).join(","));
     ["dialog","fs","plugin","core","path"].forEach(k => {
@@ -281,7 +288,7 @@ function getTauri() {
 /* ============================================================
    二、首页密码：20140506 + yyyyMMdd（无加号）
    ============================================================ */
-const PWD_PREFIX = "20140506";
+const PWD_PREFIX = "";
 function todayPwd() {
   const d = new Date();
   return PWD_PREFIX + d.getFullYear()
@@ -645,12 +652,8 @@ function applyBundle(text) {
   let obj;
   try { obj = JSON.parse(text); } catch (e) { toast("内容格式错误"); return false; }
 
-  // 兼容两种格式：{maps:{...}} 或 直接是单表
   let maps = obj.maps;
-  if (!maps && (obj.a || obj.K_26)) {
-    // 尝试旧格式：单表
-    maps = { K_26: obj };
-  }
+  if (!maps && (obj.a || obj.K_26)) maps = { K_26: obj };
   if (!maps) { toast("未识别到映射数据"); return false; }
 
   let count = 0;
@@ -668,23 +671,58 @@ function applyBundle(text) {
 }
 
 /* ============================================================
-   十二、导出：Tauri 保存 → 浏览器下载 → 剪贴板
-   （四种方式都试，日志记录每一步）
+   十二、核心：另存为（带校验）
+   返回 true=已成功保存；false=取消；抛出=失败
    ============================================================ */
-$("#bkExport").onclick = async () => {
+async function saveViaFilePicker(text, filename) {
+  const opts = {
+    suggestedName: filename,
+    types: [{ description: "JSON", accept: { "application/json": [".json"] } }]
+  };
+  const handle = await window.showSaveFilePicker(opts);   // 取消会抛 AbortError
+
+  const w = await handle.createWritable();
+  await w.write(text);
+  await w.close();
+
+  // ---- 写入后校验：重新读取该文件，比对内容 ----
+  let verified = "未校验";
+  try {
+    const f = await handle.getFile();
+    const back = await f.text();
+    if (back === text) { verified = "校验通过（" + back.length + " 字节）"; }
+    else { verified = "⚠️ 校验不一致！原 " + text.length + " / 回读 " + back.length; }
+  } catch (e) {
+    verified = "校验失败：" + e;
+  }
+  return verified;
+}
+
+/* ============================================================
+   十三、导出：另存为 → 下载 → 剪贴板（取消不丢数据）
+   ============================================================ */
+async function doExport(forceClipboard) {
   const text = bundleToText();
   const filename = "pwdgen_all_maps.json";
   $("#bkText").value = text;
-  logLine("=== 全量导出开始 ===");
+  logLine("=== 全量导出开始（" + (forceClipboard ? "强制剪贴板" : "自动") + "） ===");
 
-  /* ---- 方法 1：Tauri dialog.save + fs（若插件存在） ---- */
+  if (forceClipboard) {
+    const ok = await copyText(text);
+    saveAllMaps();
+    logLine("强制剪贴板：" + (ok ? "成功" : "失败"));
+    setStatus(ok ? "📋 已复制到剪贴板。请打开备忘录/文件App 粘贴保存。"
+                 : "❌ 复制失败，请手动复制下方文本框内容。", ok);
+    return;
+  }
+
+  /* ---- 方法 1：Tauri（本机无，保留兼容） ---- */
   const T = getTauri();
   if (T) {
     const invoke = T.invoke || (T.core && T.core.invoke);
     const dialog = T.dialog;
     const fs = T.fs;
 
-    // 1a：invoke
     if (invoke) {
       try {
         logLine("M1a invoke dialog|save");
@@ -697,11 +735,11 @@ $("#bkExport").onclick = async () => {
           saveAllMaps();
           setStatus("✅ 已保存到：" + path);
           toast("已导出"); return;
-        } else { logLine("M1a 用户取消"); return; }
+        }
+        logLine("M1a 用户取消");
       } catch (e) { logLine("M1a 失败：" + e); }
     }
 
-    // 1b：对象方法
     if (dialog && dialog.save) {
       try {
         logLine("M1b dialog.save");
@@ -710,45 +748,39 @@ $("#bkExport").onclick = async () => {
           filters: [{ name: "JSON", extensions: ["json"] }]
         });
         logLine("M1b path = " + path);
-        if (!path) { logLine("M1b 用户取消"); return; }
-        if (fs && fs.writeTextFile) {
+        if (path && fs && fs.writeTextFile) {
           await fs.writeTextFile(path, text);
           saveAllMaps();
           setStatus("✅ 已保存到：" + path);
           toast("已导出"); return;
         }
-        if (fs && fs.writeText) {
-          await fs.writeText(path, text);
-          saveAllMaps();
-          setStatus("✅ 已保存到：" + path);
-          toast("已导出"); return;
-        }
-        logLine("M1b 无 fs 写入方法");
       } catch (e) { logLine("M1b 失败：" + e); }
     }
   } else { logLine("方法1 跳过：无 Tauri"); }
 
-  /* ---- 方法 2：File System Access API（Chrome/部分WebView支持） ---- */
+  /* ---- 方法 2：showSaveFilePicker（你设备可用） ---- */
   if (window.showSaveFilePicker) {
     try {
-      logLine("M2 showSaveFilePicker");
-      const handle = await window.showSaveFilePicker({
-        suggestedName: filename,
-        types: [{ description: "JSON", accept: { "application/json": [".json"] } }]
-      });
-      const w = await handle.createWritable();
-      await w.write(text);
-      await w.close();
+      logLine("M2 showSaveFilePicker 调用");
+      const verified = await saveViaFilePicker(text, filename);
       saveAllMaps();
-      setStatus("✅ 已保存对应文件");
+      logLine("M2 保存成功，校验：" + verified);
+      setStatus("✅ 已保存并" + verified);
       toast("已导出"); return;
     } catch (e) {
-      if (e && e.name === "AbortError") { logLine("M2 用户取消"); return; }
+      if (e && e.name === "AbortError") {
+        // 【优化①】取消后自动复制到剪贴板，不丢数据
+        logLine("M2 用户取消 → 自动复制到剪贴板");
+        await copyText(text);
+        saveAllMaps();
+        setStatus("已取消保存，内容已复制到剪贴板备用。");
+        return;
+      }
       logLine("M2 失败：" + e);
     }
   } else { logLine("方法2 跳过：无 showSaveFilePicker"); }
 
-  /* ---- 方法 3：<a download>（浏览器/部分WebView） ---- */
+  /* ---- 方法 3：<a download> ---- */
   try {
     logLine("M3 a.download");
     const blob = new Blob([text], { type: "application/json" });
@@ -766,13 +798,39 @@ $("#bkExport").onclick = async () => {
   const ok = await copyText(text);
   logLine("M4 剪贴板：" + (ok ? "成功" : "失败"));
   saveAllMaps();
-  setStatus(ok
-    ? "📋 已复制到剪贴板。请打开备忘录/文件App 粘贴保存。"
-    : "❌ 导出失败：复制也失败，请手动复制下方文本框内容。");
+  setStatus(ok ? "📋 已复制到剪贴板。请打开备忘录/文件App 粘贴保存。"
+               : "❌ 导出失败，请手动复制下方文本框内容。", ok);
+}
+
+$("#bkExport").onclick = () => doExport(false);
+$("#bkExportClip").onclick = () => doExport(true);
+
+/* ---- 【新增测试项】只测试另存为对话框 ---- */
+$("#bkTestSave").onclick = async () => {
+  logLine("=== 测试另存为对话框 ===");
+  if (!window.showSaveFilePicker) {
+    logLine("测试：不支持 showSaveFilePicker");
+    setStatus("❌ 本环境不支持 showSaveFilePicker", false);
+    return;
+  }
+  const sample = JSON.stringify({ test: true, at: new Date().toLocaleString() }, null, 2);
+  try {
+    const verified = await saveViaFilePicker(sample, "pwdgen_test.json");
+    logLine("测试保存成功，校验：" + verified);
+    setStatus("✅ 对话框正常，保存并可回读：" + verified);
+  } catch (e) {
+    if (e && e.name === "AbortError") {
+      logLine("测试：用户取消");
+      setStatus("ℹ️ 对话框已弹出，但你取消了（这本身说明对话框能用）");
+    } else {
+      logLine("测试失败：" + e);
+      setStatus("❌ 对话框调用失败：" + e, false);
+    }
+  }
 };
 
 /* ============================================================
-   十三、导入：文件选择 / 剪贴板
+   十四、导入：文件 / 剪贴板 / 文本框
    ============================================================ */
 $("#bkImportFile").onclick = () => $("#bkFile").click();
 
@@ -781,7 +839,7 @@ $("#bkFile").onchange = e => {
   if (!file) return;
   const reader = new FileReader();
   reader.onload = ev => {
-    logLine("文件读取成功");
+    logLine("文件读取成功：" + file.name);
     const n = applyBundle(ev.target.result);
     if (n) { setStatus("✅ 已恢复 " + n + " 套映射表"); toast("导入成功"); }
   };
@@ -795,33 +853,47 @@ $("#bkImportClip").onclick = async () => {
     text = await navigator.clipboard.readText();
   } catch (e) {
     logLine("剪贴板读取失败：" + e);
-    setStatus("❌ 无法读取剪贴板。请把内容粘贴到下方文本框，再点【从文本框导入】。", false);
-    // 增加从文本框导入的入口
+    setStatus("❌ 无法读取剪贴板。请把内容粘贴到下方文本框，再点【从下方文本框导入】。", false);
     return;
   }
   if (!text || !text.trim()) { setStatus("剪贴板为空", false); return; }
+  $("#bkText").value = text.trim();
   const n = applyBundle(text.trim());
   if (n) { setStatus("✅ 已恢复 " + n + " 套映射表"); toast("导入成功"); }
 };
 
-$("#bkCopy").onclick = () => copyText($("#bkText").value);
-$("#bkClear").onclick = () => { $("#bkText").value = ""; };
-
-/* 从文本框导入（作为剪贴板读取失败时的补充） */
-$("#bkImportClip").addEventListener("contextmenu", e => {
-  /* 长按也走文本框导入 */
-  e.preventDefault();
+$("#bkImportText").onclick = () => {
   const t = $("#bkText").value.trim();
   if (!t) { setStatus("文本框为空", false); return; }
   const n = applyBundle(t);
   if (n) { setStatus("✅ 已恢复 " + n + " 套映射表"); toast("导入成功"); }
-});
+};
+
+$("#bkCopy").onclick = () => copyText($("#bkText").value);
+$("#bkPaste").onclick = async () => {
+  try {
+    const t = await navigator.clipboard.readText();
+    $("#bkText").value = t || "";
+    toast(t ? "已粘贴" : "剪贴板为空");
+  } catch (e) {
+    toast("无法读取剪贴板，请手动长按粘贴");
+  }
+};
+$("#bkClear").onclick = () => { $("#bkText").value = ""; };
 
 /* ============================================================
-   十四、诊断
+   十五、诊断
    ============================================================ */
 $("#bkDiag").onclick = async () => {
   const T = getTauri();
+  let storageInfo = "未知";
+  try {
+    if (navigator.storage && navigator.storage.estimate) {
+      const est = await navigator.storage.estimate();
+      storageInfo = "quota=" + Math.round((est.quota || 0) / 1048576) + "MB / usage=" + Math.round((est.usage || 0) / 1024) + "KB";
+    }
+  } catch (e) { storageInfo = "读取失败：" + e; }
+
   const report = [
     "===== 环境诊断报告 =====",
     "时间: " + new Date().toLocaleString(),
@@ -836,6 +908,9 @@ $("#bkDiag").onclick = async () => {
     "navigator.canShare: " + (!!navigator.canShare),
     "clipboard API: " + (!!(navigator.clipboard && navigator.clipboard.writeText)),
     "showSaveFilePicker: " + (!!window.showSaveFilePicker),
+    "isSecureContext: " + window.isSecureContext,
+    "crossOriginIsolated: " + window.crossOriginIsolated,
+    "storage: " + storageInfo,
     "",
     "===== 操作日志 =====",
     ...ENV_LOG
@@ -847,7 +922,7 @@ $("#bkDiag").onclick = async () => {
 };
 
 /* ============================================================
-   十五、启动
+   十六、启动
    ============================================================ */
 show("lockPage");
 logLine("应用启动完成");
